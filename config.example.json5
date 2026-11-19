@@ -1,0 +1,139 @@
+{
+  // =========================================================================
+  // WinSCP Launcher - Configuration Template (JSON5 format with comments)
+  // Copy this file to 'config.json5' (or 'config.json') to customize.
+  // =========================================================================
+
+  // --- Global Settings ---
+
+  // Terminal Emulator to launch:
+  // Options: "windows_terminal" (default), "wezterm", "alacritty", "conemu", "cmd", "custom"
+  "terminal": "windows_terminal",
+
+  // SSH Execution Backend:
+  // Options:
+  //   - "wsl": Runs SSH inside WSL with automatic PPK conversion and sshpass support.
+  //   - "native": Runs Windows native OpenSSH client (ssh.exe) directly.
+  "backend": "wsl",
+
+  // (Optional) WSL distribution name (e.g. "Ubuntu", "OracleLinux8", "Debian").
+  // If omitted or null, the default WSL distribution will be used.
+  "wsl_distro": "OracleLinux8",
+
+  // (Optional) Windows Terminal profile name (e.g. "OracleLinux8", "Ubuntu", "PowerShell").
+  // If omitted or null, Windows Terminal opens using its default profile.
+  "wt_profile": "OracleLinux8",
+
+  // Windows Terminal window mode: "tab" (new tab in existing window -w 0), or "window" (new window)
+  "window_mode": "tab",
+
+  // Default Prompt Regex:
+  // Pattern used by the ConPTY controller to detect when the remote shell prompt is ready.
+  // When matched, startup commands (jump, su -, cd) will be automatically sent.
+  "start_prompt_regex": "^(?:\\[[^\\]\\r\\n]+\\]|[^\\r\\n]*@[^\\r\\n]+(?::[^\\r\\n]*)?)\\s*[#$]\\s*$",
+
+  // Global SSH options added to all sessions (e.g. keepalive, disable strict host checking)
+  "ssh_extra_opts": [
+    "-o", "ServerAliveInterval=60"
+  ],
+
+  // =========================================================================
+  // Reusable Profiles & Profile Inheritance
+  // Define common patterns (bastion jump hosts, target users, hooks) once.
+  // Profiles can inherit from a parent via "parent" (or "extends").
+  // Child profiles inherit all parent properties, override scalar values,
+  // and extend list options (ssh_extra_opts, start_commands, pre_hooks).
+  // =========================================================================
+  "profiles": {
+    // Base profile: Shared corporate bastion jump host
+    "corp-bastion": {
+      "jump_command": "ssh bastion.company.com",
+      "ssh_extra_opts": ["-o", "ServerAliveInterval=60"]
+    },
+
+    // Child profile 1: Inherits 'corp-bastion', adds switch to Oracle user
+    "prod-oracle": {
+      "parent": "corp-bastion",
+      "change_user": "oracle",
+      "ssh_extra_opts": ["-o", "StrictHostKeyChecking=no"]
+    },
+
+    // Child profile 2: Inherits 'corp-bastion', adds switch to Postgres user & env setup
+    "prod-postgres": {
+      "parent": "corp-bastion",
+      "change_user": "postgres",
+      "start_commands": [
+        "export PGDATA=/var/lib/postgresql/data"
+      ]
+    },
+
+    // Grandchild profile: Inherits 'prod-oracle', sets specific reports directory
+    "prod-oracle-reports": {
+      "parent": "prod-oracle",
+      "start_directory": "/opt/oracle/reports/logs"
+    },
+
+    // Scenario 2: Direct connection with sudo/root switch
+    "direct-root": {
+      "change_user": "root"
+    },
+
+    // Scenario 3: Pre-connection VPN check with specific startup commands
+    "secure-corp": {
+      "pre_hooks": [
+        // "vpn_check.bat"
+      ],
+      "jump_command": "ssh jump.corp.internal",
+      "change_user": "appuser",
+      "start_commands": [
+        "source ~/.bashrc"
+      ]
+    }
+  },
+
+  // =========================================================================
+  // Wildcard Rules
+  // Automatically assign profiles without configuring each server individually!
+  // =========================================================================
+  "rules": [
+    // Any host ending with '.prod.company.local' uses the 'prod-oracle' profile
+    {
+      "host": "*.prod.company.local",
+      "profile": "prod-oracle"
+    },
+
+    // Any host in the 10.20.x subnet uses 'direct-root'
+    {
+      "host": "10.20.*",
+      "profile": "direct-root"
+    },
+
+    // Any WinSCP session starting with 'AWS-'
+    {
+      "session": "AWS-*",
+      "jump_command": "ssh aws-bastion.corp"
+    }
+  ],
+
+  // =========================================================================
+  // Specific Session Overrides
+  // Key matches the WinSCP session name or target hostname.
+  // =========================================================================
+  "sessions": {
+    // Shorthand syntax 1: directly references a profile
+    "Database-Cluster-01": "prod-oracle",
+
+    // Shorthand syntax 2: inline pipeline (jump host -> user -> cd)
+    "Legacy-WebServer": "ssh old-jump.corp.net | su - apache | cd /var/log/httpd",
+
+    // Full dictionary syntax with specific overrides
+    "Custom-Host": {
+      "profile": "prod-oracle",
+      // Override the user from the profile:
+      "change_user": "developer",
+      // (Optional) Explicit start directory. If omitted, and WinSCP passes !/,
+      // the launcher automatically navigates to WinSCP's current remote folder!
+      "start_directory": "/opt/app/logs"
+    }
+  }
+}
